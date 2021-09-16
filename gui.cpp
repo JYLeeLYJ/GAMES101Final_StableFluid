@@ -259,7 +259,7 @@ void GUI::UpdateFrameBuffer(RGBA * src){
     auto map_res = D3D11_MAPPED_SUBRESOURCE{};
     auto hr = g_pd3dDeviceContext->Map(m_impl->texture.get() , 0 , D3D11_MAP_WRITE_DISCARD , 0 , &map_res);
     assert(hr);
-    auto data = map_res.pData ;
+    auto data = reinterpret_cast<std::byte*>(map_res.pData) ;
     for(int i = 0 ; i < m_impl->height ; ++i) {
         memcpy(data , src , sizeof(RGBA) * m_impl->width);
         data += map_res.RowPitch;

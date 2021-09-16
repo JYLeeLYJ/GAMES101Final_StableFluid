@@ -10,6 +10,7 @@ find_package(imgui CONFIG REQUIRED )
 set(SOURCES 
     main.cpp
     gui.cpp
+    fluid_solver.cpp
 )
 
 include_directories(${PROJECT_SOURCE_DIR}/include)

@@ -9,6 +9,8 @@ class GUI{
 public:
     explicit GUI(std::size_t height , std::size_t width);
     ~GUI() ;
+    GUI(const GUI &) = delete;
+    GUI& operator= (const GUI &) = delete;
 
     bool ProcessMessage();
     void UpdateFrameBuffer(RGBA * );
@@ -17,7 +19,7 @@ public:
     template<std::invocable<> F>
     void Render(F && render_impl){
         RenderBegin();
-        render_impl();
+        std::forward<F>(render_impl)();
         RenderEnd();
     }
 
