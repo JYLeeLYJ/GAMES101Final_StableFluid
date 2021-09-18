@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <concepts>
+#include <span>
 
 struct RGBA{ uint8_t r , g , b , a; };
 
@@ -13,7 +14,7 @@ public:
     GUI& operator= (const GUI &) = delete;
 
     bool ProcessMessage();
-    void UpdateFrameBuffer(RGBA * );
+    void UpdateFrameBuffer(std::span<RGBA>);
     void Update();
     
     template<std::invocable<> F>
@@ -29,6 +30,5 @@ private:
 private:
 
     struct Impl;
-    
     std::unique_ptr<Impl> m_impl;
 };

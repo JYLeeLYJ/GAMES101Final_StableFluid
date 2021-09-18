@@ -254,16 +254,17 @@ void GUI::Update(){
     g_pSwapChain->Present(1, 0);
 }
 
-void GUI::UpdateFrameBuffer(RGBA * src){
-    assert(src);
+void GUI::UpdateFrameBuffer(std::span<RGBA> src){
+    assert(src.data());
     auto map_res = D3D11_MAPPED_SUBRESOURCE{};
     auto hr = g_pd3dDeviceContext->Map(m_impl->texture.get() , 0 , D3D11_MAP_WRITE_DISCARD , 0 , &map_res);
     assert(hr);
     auto data = reinterpret_cast<std::byte*>(map_res.pData) ;
+    auto src_ptr = src.data();
     for(int i = 0 ; i < m_impl->height ; ++i) {
-        memcpy(data , src , sizeof(RGBA) * m_impl->width);
+        memcpy(data , src_ptr , sizeof(RGBA) * m_impl->width);
         data += map_res.RowPitch;
-        src += m_impl->width ;
+        src_ptr += m_impl->width ;
     }
     g_pd3dDeviceContext->Unmap(m_impl->texture.get() ,0);
 }

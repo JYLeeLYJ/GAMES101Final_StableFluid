@@ -1,5 +1,6 @@
 #include "gui.h"
 #include <iostream>
+#include <Eigen/Eigen>
 
 int main(){
     auto gui = GUI{600,600};
@@ -10,5 +11,4 @@ int main(){
         });
         gui.Update();
     }
-
 }
