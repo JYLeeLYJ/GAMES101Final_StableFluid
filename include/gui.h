@@ -3,8 +3,7 @@
 #include <memory>
 #include <concepts>
 #include <span>
-
-struct RGBA{ uint8_t r , g , b , a; };
+#include "global.h"
 
 class GUI{
 public:
@@ -14,7 +13,7 @@ public:
     GUI& operator= (const GUI &) = delete;
 
     bool ProcessMessage();
-    void UpdateFrameBuffer(std::span<RGBA>);
+    void UpdateFrameBuffer(std::span<const RGBA>);
     void Update();
     
     template<std::invocable<> F>

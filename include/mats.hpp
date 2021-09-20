@@ -14,7 +14,7 @@ using Vec4u8= Eigen::Array<uint8_t , 4 , 1>;
 static_assert(sizeof(Vec2f) == sizeof(float) * 2);
 
 struct Index2D{
-    std::size_t i , j ;
+    int i , j ;
 };
 
 template<class V>
@@ -29,8 +29,9 @@ public:
 
     template<std::invocable<V & , Index2D> F>
     void ForEach(F && f) noexcept(noexcept(std::forward<F>(f)(m_data[0] , {0,0}))) {
-        for(std::size_t i = 0; i < m_shape_x ; ++i) {
-            for(std::size_t j = 0 , pos = i * m_shape_y; j < m_shape_y ; ++j , ++pos) {
+        #pragma omp parallel for
+        for(int i = 0; i < m_shape_x ; ++i) {
+            for(int j = 0 , pos = i * m_shape_y; j < m_shape_y ; ++j , ++pos) {
                 std::forward<F>(f)(m_data[pos] , {i,j});
             }
         }
@@ -42,14 +43,14 @@ public:
         return m_data[pos];
     }
 
-    const std::span<V> Span() const noexcept {
+    std::span<const V> Span() const noexcept {
         return std::span{m_data.data() , m_data.size()};
     }
 
     //　clamp sample , no extrapolate
     V Sample(Index2D index) noexcept {
-        index.i = std::clamp<std::size_t>(0 , m_shape_x - 1 , index.i);
-        index.j = std::clamp<std::size_t>(0 , m_shape_y - 1 , index.j);
+        index.i = std::clamp<std::size_t>(index.i , 0 , m_shape_x - 1 );
+        index.j = std::clamp<std::size_t>(index.j , 0 , m_shape_y - 1 );
         return this->operator[](index);
     }
 

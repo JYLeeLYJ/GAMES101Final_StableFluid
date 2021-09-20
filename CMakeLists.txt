@@ -12,8 +12,8 @@ set(SOURCES
     gui.cpp
     fluid_solver.cpp
 )
-
 include_directories(${PROJECT_SOURCE_DIR}/include)
 add_executable(fluid ${SOURCES})
 target_link_libraries(fluid PRIVATE imgui::imgui d3d11)
+target_compile_options(fluid PRIVATE /openmp)
 

@@ -1,6 +1,5 @@
 #include "mats.hpp"
 #include "fluid_solver.h"
-
 #include <algorithm>
 #include <cmath>
 
@@ -10,7 +9,7 @@ struct FluidSolver::Impl{
     Field<float> vel_divergence;
     Field<Vec2f> velocity , velocity_next;
     Field<Vec3f> dye , dye_next;
-    Field<Vec4u8> color_buffer; //RGBA
+    Field<RGBA> color_buffer; //RGBA
     
     Vec3f dye_color;  // dye color
     float decay;    // color decay
@@ -21,7 +20,7 @@ struct FluidSolver::Impl{
     , vel_divergence(shape_x, shape_y)
     , velocity(shape_x, shape_y) , velocity_next(shape_x,shape_y) 
     , dye(shape_x,  shape_y ) , dye_next(shape_x , shape_y)
-    , color_buffer(shape_x ,shape_y){}
+    , color_buffer(shape_y ,shape_x){}
 };
 
 FluidSolver::FluidSolver(std::size_t shape_x, std::size_t shape_y)
@@ -33,12 +32,18 @@ FluidSolver::FluidSolver(std::size_t shape_x, std::size_t shape_y)
     m_impl->time_stamp = 0.03;
 }
 
+FluidSolver::~FluidSolver() {}
+
 void FluidSolver::SolveStep(){
     Advection();
     ExternalForce();
     Projection();
     UpdateVelocity();
     UpdateDye();
+}
+
+std::span<const RGBA> FluidSolver::GetColors() const noexcept {
+    return m_impl->color_buffer.Span();
 }
 
 template<class T>
@@ -49,7 +54,7 @@ T LinearInterpolate(const T& a ,const T& b , float t) {
 template<class T>
 T BilinearInterpolate(Field<T> & f , Vec2f pos) {
     Vec2f p = pos - 0.5 ;
-    std::size_t u = std::floor(p[0]) , v = std::floor(p[1]);
+    int u = std::floor(p[0]) , v = std::floor(p[1]);
     float fu = p[0] - u , fv = p[1] - v;
     auto a = f.Sample({u , v });
     auto b = f.Sample({u + 1, v});
@@ -65,8 +70,7 @@ T BilinearInterpolate(Field<T> & f , Vec2f pos) {
 void FluidSolver::Advection(){
 
     auto back_trace = [](Field<Vec2f> & vf , Vec2f pos , float dt) -> Vec2f{
-        pos -= BilinearInterpolate(vf , pos) * dt;
-        return pos ;
+        return pos -= BilinearInterpolate(vf , pos) * dt;
     };
 
     auto do_advect = [&]<class T>(Field<Vec2f> & vf , Field<T> & f , Field<T> & f_next){
@@ -96,7 +100,6 @@ void FluidSolver::ExternalForce(){
     auto f_strength_dt = 2000.f * m_impl->time_stamp;
     auto f_r = m_shape_x / 3.0f;
     auto inv_f_r = 1.0f / f_r;
-    // float sx = m_shape_x / 2.f , sy = 0.f;
     auto source = Vec2f{m_shape_x / 2.f , 0.f};
     auto f_g_dt = 9.8 * m_impl->time_stamp;
     
@@ -110,14 +113,20 @@ void FluidSolver::ExternalForce(){
 void FluidSolver::Projection(){
     //velocity divergence 
     m_impl->vel_divergence.ForEach([&](float & div , Index2D index){
-        auto vl = m_impl->velocity.Sample({index.i - 1 , index.j})[0];
-        auto vr = m_impl->velocity.Sample({index.i + 1 , index.j})[0];
-        auto vb = m_impl->velocity.Sample({index.i , index.j - 1})[1];
-        auto vt = m_impl->velocity.Sample({index.i , index.j + 1})[1];
-        if(index.i == 0) vl = 0;
-        else if(index.i == m_shape_x - 1) vr = 0;
-        if(index.j == 0) vt = 0;
-        else if(index.j == m_shape_y - 1) vt = 0;
+        auto & [i , j] = index;
+        auto vl = m_impl->velocity.Sample({i - 1 , j})[0];
+        auto vr = m_impl->velocity.Sample({i + 1 , j})[0];
+        auto vb = m_impl->velocity.Sample({i , j - 1})[1];
+        auto vt = m_impl->velocity.Sample({i , j + 1})[1];
+        auto vc = m_impl->velocity[index];
+        // if(i == 0) vl = 0 ;
+        // else if(i == m_shape_x - 1) vr = 0 ;
+        // if(j == 0) vb = 0;
+        // else if(j == m_shape_y - 1) vt = 0;
+        if(i == 0) vl = -vc[0];
+        else if(i == m_shape_x - 1) vr = -vc[0];
+        if(j == 0) vb = -vc[1];
+        else if(j == m_shape_y - 1) vt = -vc[1];
         div = (vr - vl + vt - vb) * 0.5 ;   // 1/(2 dx) = 0.5
     });
 
@@ -129,8 +138,8 @@ void FluidSolver::Projection(){
             auto &[i , j] = index;
             auto pl = m_impl->pressure.Sample({i - 1 , j});
             auto pr = m_impl->pressure.Sample({i + 1 , j});
-            auto pt = m_impl->pressure.Sample({i , j - 1});
-            auto pb = m_impl->pressure.Sample({i , j + 1});
+            auto pt = m_impl->pressure.Sample({i , j + 1});
+            auto pb = m_impl->pressure.Sample({i , j - 1});
             auto vdiv = m_impl->vel_divergence[index];
             m_impl->pressure_next[index] = 0.25 * (pl + pr + pt + pb - vdiv); // dx = 1
         });
@@ -143,9 +152,9 @@ void FluidSolver::UpdateVelocity(){
         auto & [i, j] = index;
         auto pl = m_impl->pressure.Sample({i - 1 , j});
         auto pr = m_impl->pressure.Sample({i + 1 , j});
-        auto pt = m_impl->pressure.Sample({i , j - 1});
-        auto pb = m_impl->pressure.Sample({i , j + 1});
-        m_impl->velocity[index] -= 0.5 * Vec2f{pr - pl , pt - pb};
+        auto pb = m_impl->pressure.Sample({i , j - 1});
+        auto pt = m_impl->pressure.Sample({i , j + 1});
+        v -= 0.5 * Vec2f{pr - pl , pt - pb};
     });
 }
 
@@ -156,5 +165,15 @@ void FluidSolver::UpdateDye(){
         auto d2 = (Vec2f{index.i , index.j} + 0.5f - source).square().sum();
         auto dc = (d + std::exp(-d2 * inv_dye_denom) * m_impl->dye_color) * m_impl->decay;
         d = dc.cwiseMin(m_impl->dye_color);
+    });
+
+    //update color buffer
+    m_impl->color_buffer.ForEach([&](RGBA & col , Index2D index){
+        index = {index.j , static_cast<int>(m_shape_y) - 1 - index.i};
+        auto & fcol = m_impl->dye[index];
+        constexpr auto tou8 = [](const float & f){
+            return std::clamp<uint8_t>(std::abs(f) * 255, 0 , 255);
+        };
+        col = {tou8(fcol[0]) , tou8(fcol[1]) , tou8(fcol[2]) , 255};
     });
 }

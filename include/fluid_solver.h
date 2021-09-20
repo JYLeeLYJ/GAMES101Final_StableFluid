@@ -1,21 +1,27 @@
 #pragma once
 
 #include <memory>
+#include <span>
+#include "global.h"
 
 class FluidSolver{
 public:
     explicit FluidSolver(std::size_t, std::size_t ); 
+    ~FluidSolver();
     FluidSolver(const FluidSolver & ) = delete;
     FluidSolver & operator=(const FluidSolver & ) = delete;
-    
+
+    void SolveStep();
+
+    std::span<const RGBA> GetColors() const noexcept ;
+private:
+
     void Reset();
     void Advection();
     void ExternalForce();
     void Projection();
     void UpdateVelocity();
     void UpdateDye();
-    void SolveStep();
-private:
 
 private :
     struct Impl ;
