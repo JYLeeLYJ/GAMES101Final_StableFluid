@@ -7,7 +7,6 @@
 #include <stdexcept>
 #include <system_error>
 #include <vector>
-
 #include "gui.h"
 
 // Data
@@ -213,6 +212,11 @@ GUI::~GUI(){
 
     CleanupDeviceD3D();
     ::DestroyWindow(m_impl->hwnd);
+}
+
+void GUI::SetWindowsTitle(std::string str){
+    if(m_impl->hwnd) 
+        ::SetWindowText(m_impl->hwnd , str.data());
 }
 
 // return true as quit
