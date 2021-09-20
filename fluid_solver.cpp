@@ -11,9 +11,13 @@ struct FluidSolver::Impl{
     Field<Vec3f> dye , dye_next;
     Field<RGBA> color_buffer; //RGBA
     
-    Vec3f dye_color;  // dye color
-    float decay;    // color decay
-    float time_stamp ; // time_stamp;
+    Vec3f dye_color;  
+    float decay;        // dyeing color decay
+    float time_stamp ;  // simulation time stamp;
+    int jocobian_step;  // for jocobian iteration 
+    float f_strength;   // source emittion force strength 
+    Vec2f f_gravity ;   // gravity force
+    Vec2f emit_source ;
 
     FluidSolver::Impl(std::size_t shape_x, std::size_t shape_y) 
     : pressure(shape_x , shape_y) , pressure_next(shape_x,shape_y) 
@@ -27,9 +31,14 @@ FluidSolver::FluidSolver(std::size_t shape_x, std::size_t shape_y)
 : m_shape_x(shape_x) , m_shape_y(shape_y) 
 , m_impl(std::make_unique<Impl>(shape_x , shape_y)){
     Reset();
+
     m_impl->dye_color = {0.9f,0,0};
     m_impl->decay = 0.99;
     m_impl->time_stamp = 0.03;
+    m_impl->jocobian_step = 30;
+    m_impl->f_strength = 2000;
+    m_impl->f_gravity = {0,0};
+    m_impl->emit_source = {m_shape_x / 2 , 0};
 }
 
 FluidSolver::~FluidSolver() {}
@@ -51,11 +60,15 @@ T LinearInterpolate(const T& a ,const T& b , float t) {
     return a + t * (b - a);
 }
 
+// Notes : For open boundary condition 
+// sampler should use extropolate method 
+// to compute material dirivertive at position where out of field boundary
+
 template<class T>
 T BilinearInterpolate(Field<T> & f , Vec2f pos) {
-    Vec2f p = pos - 0.5 ;
-    int u = std::floor(p[0]) , v = std::floor(p[1]);
-    float fu = p[0] - u , fv = p[1] - v;
+    pos -= 0.5 ;
+    int u = std::floor(pos[0]) , v = std::floor(pos[1]);
+    float fu = pos[0] - u , fv = pos[1] - v;
     auto a = f.Sample({u , v });
     auto b = f.Sample({u + 1, v});
     auto c = f.Sample({u , v + 1});
@@ -67,16 +80,34 @@ T BilinearInterpolate(Field<T> & f , Vec2f pos) {
     );
 }
 
-void FluidSolver::Advection(){
+enum RK_ORDER:int{ RK_1 , RK_2 , RK_3 };
 
-    auto back_trace = [](Field<Vec2f> & vf , Vec2f pos , float dt) -> Vec2f{
-        return pos -= BilinearInterpolate(vf , pos) * dt;
-    };
+template<RK_ORDER rank>
+auto BackTrace(Field<Vec2f> & vf , Vec2f pos , float dt ) -> Vec2f{
+    if constexpr (rank == RK_1) {
+        pos -= BilinearInterpolate(vf , pos) * dt;
+    }
+    else if constexpr(rank == RK_2){
+        auto mid = pos - 0.5 * dt * BilinearInterpolate(vf, pos);
+        pos -= dt * BilinearInterpolate(vf , mid);
+    }
+    else {
+        auto v1 = BilinearInterpolate(vf , pos);
+        Vec2f p1 = pos - 0.5 * dt * v1 ;
+        auto v2 = BilinearInterpolate(vf , p1);
+        Vec2f p2 = pos - 0.75 * dt * v2;
+        auto v3 = BilinearInterpolate(vf , p2);
+        pos -= dt * ((2.f / 9) * v1 + (1.f / 3) * v2 + (4.f / 9) * v3);
+    }
+    return pos;
+}
+
+void FluidSolver::Advection(){
 
     auto do_advect = [&]<class T>(Field<Vec2f> & vf , Field<T> & f , Field<T> & f_next){
         f.ForEach([&](T & val , Index2D id){
             //semi-lagurange
-            auto pos = back_trace(vf , Vec2f{id.i ,id.j} + 0.5f , m_impl->time_stamp);
+            auto pos = BackTrace<RK_3>(vf , Vec2f{id.i , id.j} + 0.5f , m_impl->time_stamp); 
             f_next[id] = BilinearInterpolate(f , pos);
         });
     };
@@ -92,19 +123,18 @@ void FluidSolver::Reset(){
     // fill init values into fields
     m_impl->velocity.Fill({0,0});
     m_impl->dye.Fill({0,0,0});
-    m_impl->color_buffer.Fill({0,0,0,255});
     m_impl->pressure.Fill(0.f);
 }
 
 void FluidSolver::ExternalForce(){
-    auto f_strength_dt = 2000.f * m_impl->time_stamp;
+    // handle smoke source 
+    auto f_strength_dt = m_impl->f_strength * m_impl->time_stamp;
     auto f_r = m_shape_x / 3.0f;
     auto inv_f_r = 1.0f / f_r;
-    auto source = Vec2f{m_shape_x / 2.f , 0.f};
-    auto f_g_dt = 9.8 * m_impl->time_stamp;
+    auto f_g_dt = m_impl->f_gravity * m_impl->time_stamp;
     
     m_impl->velocity.ForEach([&](Vec2f & v , const Index2D & index){
-        auto d2 = (Vec2f{index.i , index.j} + 0.5 - source).square().sum();
+        auto d2 = (Vec2f{index.i , index.j} + 0.5 - m_impl->emit_source).square().sum();
         auto momentum = Vec2f{0 , 1} * f_strength_dt * std::exp(-d2 * inv_f_r) - f_g_dt;
         v += momentum;
     });
@@ -119,19 +149,15 @@ void FluidSolver::Projection(){
         auto vb = m_impl->velocity.Sample({i , j - 1})[1];
         auto vt = m_impl->velocity.Sample({i , j + 1})[1];
         auto vc = m_impl->velocity[index];
-        // if(i == 0) vl = 0 ;
-        // else if(i == m_shape_x - 1) vr = 0 ;
-        // if(j == 0) vb = 0;
-        // else if(j == m_shape_y - 1) vt = 0;
-        if(i == 0) vl = -vc[0];
-        else if(i == m_shape_x - 1) vr = -vc[0];
-        if(j == 0) vb = -vc[1];
-        else if(j == m_shape_y - 1) vt = -vc[1];
+        if(i == 0) vl = 0 ;
+        else if(i == m_shape_x - 1) vr = 0 ;
+        if(j == 0) vb = 0;
+        else if(j == m_shape_y - 1) vt = 0;
         div = (vr - vl + vt - vb) * 0.5 ;   // 1/(2 dx) = 0.5
     });
 
     //jacobian iteration 
-    int times = 20;
+    int times = m_impl->jocobian_step;
     while(times--){
         //jacobian step , solve pressure
         m_impl->pressure.ForEach([&](float & _ , const Index2D & index){
@@ -160,9 +186,8 @@ void FluidSolver::UpdateVelocity(){
 
 void FluidSolver::UpdateDye(){
     float inv_dye_denom = 4.0f / std::pow(m_shape_x / 20.f , 2) ;
-    auto source = Vec2f{m_shape_x / 2.f , 0};
     m_impl->dye.ForEach([&](Vec3f & d , const Index2D & index){
-        auto d2 = (Vec2f{index.i , index.j} + 0.5f - source).square().sum();
+        auto d2 = (Vec2f{index.i , index.j} + 0.5f - m_impl->emit_source).square().sum();
         auto dc = (d + std::exp(-d2 * inv_dye_denom) * m_impl->dye_color) * m_impl->decay;
         d = dc.cwiseMin(m_impl->dye_color);
     });
@@ -171,7 +196,7 @@ void FluidSolver::UpdateDye(){
     m_impl->color_buffer.ForEach([&](RGBA & col , Index2D index){
         index = {index.j , static_cast<int>(m_shape_y) - 1 - index.i};
         auto & fcol = m_impl->dye[index];
-        constexpr auto tou8 = [](const float & f){
+        constexpr auto tou8 = [](const float & f) constexpr{
             return std::clamp<uint8_t>(std::abs(f) * 255, 0 , 255);
         };
         col = {tou8(fcol[0]) , tou8(fcol[1]) , tou8(fcol[2]) , 255};

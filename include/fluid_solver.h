@@ -12,11 +12,12 @@ public:
     FluidSolver & operator=(const FluidSolver & ) = delete;
 
     void SolveStep();
+    void Reset();
+    void SetGravity(float  , float);
 
     std::span<const RGBA> GetColors() const noexcept ;
 private:
 
-    void Reset();
     void Advection();
     void ExternalForce();
     void Projection();

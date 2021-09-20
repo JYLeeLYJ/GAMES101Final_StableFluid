@@ -29,8 +29,9 @@ public:
 
     template<std::invocable<V & , Index2D> F>
     void ForEach(F && f) noexcept(noexcept(std::forward<F>(f)(m_data[0] , {0,0}))) {
-        #pragma omp parallel for
-        for(int i = 0; i < m_shape_x ; ++i) {
+        // coord (i, j) should be signed integer
+        #pragma omp parallel for schedule (dynamic , 8)
+        for(int i = 0; i < m_shape_x ; ++i) { 
             for(int j = 0 , pos = i * m_shape_y; j < m_shape_y ; ++j , ++pos) {
                 std::forward<F>(f)(m_data[pos] , {i,j});
             }
@@ -47,10 +48,10 @@ public:
         return std::span{m_data.data() , m_data.size()};
     }
 
-    //　clamp sample , no extrapolate
+    // clamp sample , no extrapolate
     V Sample(Index2D index) noexcept {
-        index.i = std::clamp<std::size_t>(index.i , 0 , m_shape_x - 1 );
-        index.j = std::clamp<std::size_t>(index.j , 0 , m_shape_y - 1 );
+        index.i = std::clamp<int>(index.i , 0 , m_shape_x - 1 );
+        index.j = std::clamp<int>(index.j , 0 , m_shape_y - 1 );
         return this->operator[](index);
     }
 
