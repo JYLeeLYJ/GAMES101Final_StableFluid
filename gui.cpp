@@ -15,7 +15,7 @@ static ID3D11Device*            g_pd3dDevice = nullptr;
 static ID3D11DeviceContext*     g_pd3dDeviceContext = nullptr;
 static IDXGISwapChain*          g_pSwapChain = nullptr; 
 static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
-
+ 
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 // Forward declarations of helper functions
@@ -194,10 +194,12 @@ GUI::GUI(std::size_t height , std::size_t width)
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    // auto & io = ImGui::GetIO();
-    // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard ;
+    auto & io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard ;
     // ImGui::StyleColorsLight();
     ImGui::StyleColorsClassic();
+    ImGui::GetStyle().WindowRounding = 5.f;
+
     ImGui_ImplWin32_Init(m_impl->hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice , g_pd3dDeviceContext);
 
@@ -258,7 +260,8 @@ void GUI::RenderBegin(){
         ImGuiWindowFlags_NoScrollWithMouse |
         ImGuiWindowFlags_NoBringToFrontOnFocus |
         ImGuiWindowFlags_NoTitleBar | 
-        ImGuiWindowFlags_NoBackground;
+        ImGuiWindowFlags_NoBackground | 
+        ImGuiWindowFlags_NoSavedSettings ;
 
     ImGui::Begin("fullscreen" , nullptr , flags);
     ImGui::Image(m_impl->texture_view , ImVec2(m_impl->height ,m_impl->width));

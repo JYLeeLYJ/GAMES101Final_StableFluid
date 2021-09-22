@@ -4,16 +4,25 @@
 #include <span>
 #include "global.h"
 
+
+struct FluidConfig{
+    int jacobian_step;
+    float decay ;
+    float time_step;
+    float gravity[2];
+};
+
 class FluidSolver{
 public:
-    explicit FluidSolver(std::size_t, std::size_t ); 
+    explicit FluidSolver(std::size_t, std::size_t , const FluidConfig& ); 
     ~FluidSolver();
     FluidSolver(const FluidSolver & ) = delete;
     FluidSolver & operator=(const FluidSolver & ) = delete;
 
     void SolveStep();
     void Reset();
-    void SetGravity(float  , float);
+    void SetColor(float r, float g , float b );
+    void SetConfig(const FluidConfig & );
 
     std::span<const RGBA> GetColors() const noexcept ;
 private:

@@ -27,18 +27,12 @@ struct FluidSolver::Impl{
     , color_buffer(shape_y ,shape_x){}
 };
 
-FluidSolver::FluidSolver(std::size_t shape_x, std::size_t shape_y)
+FluidSolver::FluidSolver(std::size_t shape_x, std::size_t shape_y , const FluidConfig & config)
 : m_shape_x(shape_x) , m_shape_y(shape_y) 
 , m_impl(std::make_unique<Impl>(shape_x , shape_y)){
     Reset();
-
-    m_impl->dye_color = {0.9f,0,0};
-    m_impl->decay = 0.99;
-    m_impl->time_stamp = 0.03;
-    m_impl->jocobian_step = 100;
-    m_impl->f_strength = 2000;
-    m_impl->f_gravity = {0,0};
-    m_impl->emit_source = {m_shape_x / 2 , 0};
+    SetColor(1,0,0);
+    SetConfig(config);
 }
 
 FluidSolver::~FluidSolver() {}
@@ -49,6 +43,19 @@ void FluidSolver::SolveStep(){
     Projection();
     UpdateVelocity();
     UpdateDye();
+}
+
+void FluidSolver::SetConfig(const FluidConfig & config){
+    m_impl->decay = std::clamp(config.decay , 0.f , 1.f);
+    m_impl->time_stamp = config.time_step;
+    m_impl->jocobian_step = config.jacobian_step;
+    m_impl->f_strength = 2000;
+    m_impl->f_gravity = {config.gravity[0] , config.gravity[1]};
+    m_impl->emit_source = {m_shape_x / 2 , 0};
+}
+
+void FluidSolver::SetColor(float r , float g , float b){
+    m_impl->dye_color = {r , g, b};
 }
 
 std::span<const RGBA> FluidSolver::GetColors() const noexcept {
@@ -80,18 +87,18 @@ T BilinearInterpolate(Field<T> & f , Vec2f pos) {
     );
 }
 
-enum RK_METHOD:int{ RK_1 , RK_2 , RK_3 };
+enum RK_CLASS:int{ RK_1 , RK_2 , RK_3 };
 
-template<RK_METHOD rank>
+template<RK_CLASS rk>
 auto BackTrace(Field<Vec2f> & vf , Vec2f pos , float dt ) -> Vec2f{
-    if constexpr (rank == RK_1) {
+    if constexpr (rk == RK_1) {
         pos -= BilinearInterpolate(vf , pos) * dt;
     }
-    else if constexpr(rank == RK_2){
+    else if constexpr(rk == RK_2){
         auto mid = pos - 0.5 * dt * BilinearInterpolate(vf, pos);
         pos -= dt * BilinearInterpolate(vf , mid);
     }
-    else {
+    else {  // RK_3
         auto v1 = BilinearInterpolate(vf , pos);
         Vec2f p1 = pos - 0.5 * dt * v1 ;
         auto v2 = BilinearInterpolate(vf , p1);
@@ -123,19 +130,22 @@ void FluidSolver::Reset(){
     // fill init values into fields
     m_impl->velocity.Fill({0,0});
     m_impl->dye.Fill({0,0,0});
+    // m_impl->color_buffer.Fill({});
     m_impl->pressure.Fill(0.f);
 }
 
 void FluidSolver::ExternalForce(){
     // handle smoke source 
     auto f_strength_dt = m_impl->f_strength * m_impl->time_stamp;
-    auto f_r = m_shape_x / 3.0f;
-    auto inv_f_r = 1.0f / f_r;
+    // auto f_r = m_shape_x / 3.0f;
+    // auto inv_f_r = 1.0f / f_r;
     auto f_g_dt = m_impl->f_gravity * m_impl->time_stamp;
     
     m_impl->velocity.ForEach([&](Vec2f & v , const Index2D & index){
         auto d2 = (Vec2f{index.i , index.j} + 0.5 - m_impl->emit_source).square().sum();
-        auto momentum = Vec2f{0 , 1} * f_strength_dt * std::exp(-d2 * inv_f_r) - f_g_dt;
+        // auto momentum = Vec2f{0 , 1} * f_strength_dt * std::exp(-d2 * inv_f_r) - f_g_dt;
+        Vec2f momentum = f_g_dt;
+        if(d2 < 400) momentum += Vec2f{0 , 1} * f_strength_dt ;
         v += momentum;
     });
 }
@@ -187,9 +197,12 @@ void FluidSolver::UpdateVelocity(){
 void FluidSolver::UpdateDye(){
     float inv_dye_denom = 4.0f / std::pow(m_shape_x / 20.f , 2) ;
     m_impl->dye.ForEach([&](Vec3f & d , const Index2D & index){
+        // d *= m_impl->decay;
         auto d2 = (Vec2f{index.i , index.j} + 0.5f - m_impl->emit_source).square().sum();
-        auto dc = (d + std::exp(-d2 * inv_dye_denom) * m_impl->dye_color) * m_impl->decay;
-        d = dc.cwiseMin(m_impl->dye_color);
+        auto dc = (d + std::exp(-d2 * inv_dye_denom) * m_impl->dye_color )* m_impl->decay;
+        // if(std::sqrt(dc.square().sum()) > 0.1f) d = dc;
+        if(d2 < 400) d = dc.cwiseMin(m_impl->dye_color);
+        else d = dc.cwiseMin(1.f);
     });
 
     //update color buffer
