@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <system_error>
 #include <vector>
+#include <iostream>
 #include "gui.h"
 
 // Data
@@ -215,17 +216,28 @@ GUI::~GUI(){
 }
 
 void GUI::SetWindowsTitle(std::string str){
+    assert(str.data());
     if(m_impl->hwnd) 
-        ::SetWindowText(m_impl->hwnd , str.data());
+        ::SetWindowTextA(m_impl->hwnd , str.data());
 }
 
 // return true as quit
-bool GUI::ProcessMessage(){
+bool GUI::ProcessMessage(bool blocking){
     auto msg = MSG{};
-    while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)){
+    auto process = [&]{ // true as quit
         ::TranslateMessage(&msg);
         ::DispatchMessage(&msg);
         if (msg.message == WM_QUIT) return true;
+        else return false;
+    };
+    if(blocking) {
+        ::GetMessage(&msg , nullptr , 0U , 0U) ;
+        if(process()) return true;
+    }
+    else {
+        while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)){
+            if(process()) return true;
+        }
     }
     return false;
 }
@@ -239,9 +251,16 @@ void GUI::RenderBegin(){
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
     
-    auto flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse ;
+    auto flags = 
+        ImGuiWindowFlags_NoMove | 
+        ImGuiWindowFlags_NoResize | 
+        ImGuiWindowFlags_NoScrollbar | 
+        ImGuiWindowFlags_NoScrollWithMouse |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoTitleBar | 
+        ImGuiWindowFlags_NoBackground;
 
-    ImGui::Begin("fullscreen" , nullptr , flags | ImGuiWindowFlags_NoTitleBar);
+    ImGui::Begin("fullscreen" , nullptr , flags);
     ImGui::Image(m_impl->texture_view , ImVec2(m_impl->height ,m_impl->width));
     ImGui::End();
 }
@@ -251,7 +270,7 @@ void GUI::RenderEnd(){
 }
 
 void GUI::Update(){
-    static const float clear_color[4] = {0.45f, 0.55f, 0.60f, 1.00f};
+    static const float clear_color[4] = {0.f, 0.f, 0.f, 1.00f};
     g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView , nullptr );
     g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(Stable_Fluid2D)
 
+# 20 is not fully support in MSVC
 # set(CMAKE_CXX_STANDARD 20)
 
 find_package(Eigen3 CONFIG REQUIRED )

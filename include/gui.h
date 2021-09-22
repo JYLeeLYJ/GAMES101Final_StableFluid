@@ -14,7 +14,7 @@ public:
     GUI& operator= (const GUI &) = delete;
 
     // ProcessMessage() return true if receive quit message
-    bool ProcessMessage();
+    bool ProcessMessage(bool);
     void UpdateFrameBuffer(std::span<const RGBA>);
     void Update();
     void SetWindowsTitle(std::string);

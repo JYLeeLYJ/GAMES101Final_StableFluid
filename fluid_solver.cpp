@@ -6,9 +6,9 @@
 struct FluidSolver::Impl{
     //grids { pressure , velocity , dye , divergence , RGBA buffer }
     Field<float> pressure , pressure_next;
-    Field<float> vel_divergence;
     Field<Vec2f> velocity , velocity_next;
     Field<Vec3f> dye , dye_next;
+    Field<float> vel_divergence;
     Field<RGBA> color_buffer; //RGBA
     
     Vec3f dye_color;  
@@ -17,13 +17,13 @@ struct FluidSolver::Impl{
     int jocobian_step;  // for jocobian iteration 
     float f_strength;   // source emittion force strength 
     Vec2f f_gravity ;   // gravity force
-    Vec2f emit_source ;
+    Vec2f emit_source ; // smoke source
 
     FluidSolver::Impl(std::size_t shape_x, std::size_t shape_y) 
     : pressure(shape_x , shape_y) , pressure_next(shape_x,shape_y) 
-    , vel_divergence(shape_x, shape_y)
     , velocity(shape_x, shape_y) , velocity_next(shape_x,shape_y) 
     , dye(shape_x,  shape_y ) , dye_next(shape_x , shape_y)
+    , vel_divergence(shape_x, shape_y)
     , color_buffer(shape_y ,shape_x){}
 };
 
@@ -35,7 +35,7 @@ FluidSolver::FluidSolver(std::size_t shape_x, std::size_t shape_y)
     m_impl->dye_color = {0.9f,0,0};
     m_impl->decay = 0.99;
     m_impl->time_stamp = 0.03;
-    m_impl->jocobian_step = 30;
+    m_impl->jocobian_step = 100;
     m_impl->f_strength = 2000;
     m_impl->f_gravity = {0,0};
     m_impl->emit_source = {m_shape_x / 2 , 0};
@@ -60,7 +60,7 @@ T LinearInterpolate(const T& a ,const T& b , float t) {
     return a + t * (b - a);
 }
 
-// Notes : For open boundary condition 
+// Notes : For open boundary condition implementation
 // sampler should use extropolate method 
 // to compute material dirivertive at position where out of field boundary
 
@@ -80,9 +80,9 @@ T BilinearInterpolate(Field<T> & f , Vec2f pos) {
     );
 }
 
-enum RK_ORDER:int{ RK_1 , RK_2 , RK_3 };
+enum RK_METHOD:int{ RK_1 , RK_2 , RK_3 };
 
-template<RK_ORDER rank>
+template<RK_METHOD rank>
 auto BackTrace(Field<Vec2f> & vf , Vec2f pos , float dt ) -> Vec2f{
     if constexpr (rank == RK_1) {
         pos -= BilinearInterpolate(vf , pos) * dt;
@@ -107,7 +107,7 @@ void FluidSolver::Advection(){
     auto do_advect = [&]<class T>(Field<Vec2f> & vf , Field<T> & f , Field<T> & f_next){
         f.ForEach([&](T & val , Index2D id){
             //semi-lagurange
-            auto pos = BackTrace<RK_3>(vf , Vec2f{id.i , id.j} + 0.5f , m_impl->time_stamp); 
+            auto pos = BackTrace<RK_2>(vf , Vec2f{id.i , id.j} + 0.5f , m_impl->time_stamp); 
             f_next[id] = BilinearInterpolate(f , pos);
         });
     };
