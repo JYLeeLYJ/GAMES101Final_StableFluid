@@ -8,21 +8,21 @@
 
 // TODO : 
 // 1. frame buffer should directly write into d3d backgroud
-// 2. GUI interactive {gravity setting }
-// 4. profiling
+// 2. profiling
 
 using namespace std::chrono;
 using namespace std::string_literals;
 
 int main(){
+    constexpr std::size_t resolution = 512;
     auto config = FluidConfig{
         .jacobian_step = 100,
         .decay = 0.999,
         .time_step = 0.015,
         .gravity = {0,0},
     };
-    auto gui = GUI{600,600};
-    auto solver = FluidSolver{600,600, config};
+    auto gui = GUI{resolution,resolution};
+    auto solver = FluidSolver{resolution,resolution, config};
     // GUI states
     bool paused = false;
     bool reset = false;

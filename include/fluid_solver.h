@@ -23,8 +23,9 @@ public:
     void Reset();
     void SetColor(float r, float g , float b );
     void SetConfig(const FluidConfig & );
-
     std::span<const RGBA> GetColors() const noexcept ;
+    
+    void RunBench();
 private:
 
     void Advection();

@@ -63,7 +63,7 @@ std::span<const RGBA> FluidSolver::GetColors() const noexcept {
 }
 
 template<class T>
-T LinearInterpolate(const T& a ,const T& b , float t) {
+auto LinearInterpolate(const T& a ,const T& b , float t) {
     return a + t * (b - a);
 }
 
@@ -73,8 +73,9 @@ T LinearInterpolate(const T& a ,const T& b , float t) {
 
 template<class T>
 T BilinearInterpolate(Field<T> & f , Vec2f pos) {
-    pos -= 0.5 ;
-    int u = std::floor(pos[0]) , v = std::floor(pos[1]);
+    pos -= 0.5f ;
+    // int u = std::floor(pos[0]) , v = std::floor(pos[1]);
+    int u = pos[0] , v = pos[1];
     float fu = pos[0] - u , fv = pos[1] - v;
     auto a = f.Sample({u , v });
     auto b = f.Sample({u + 1, v});
@@ -112,10 +113,10 @@ auto BackTrace(Field<Vec2f> & vf , Vec2f pos , float dt ) -> Vec2f{
 void FluidSolver::Advection(){
 
     auto do_advect = [&]<class T>(Field<Vec2f> & vf , Field<T> & f , Field<T> & f_next){
-        f.ForEach([&](T & val , Index2D id){
+        f_next.ForEach([&](T & val , Index2D id){
             //semi-lagurange
             auto pos = BackTrace<RK_2>(vf , Vec2f{id.i , id.j} + 0.5f , m_impl->time_stamp); 
-            f_next[id] = BilinearInterpolate(f , pos);
+            val = BilinearInterpolate(f , pos);
         });
     };
 
@@ -170,15 +171,36 @@ void FluidSolver::Projection(){
     int times = m_impl->jocobian_step;
     while(times--){
         //jacobian step , solve pressure
-        m_impl->pressure.ForEach([&](float & _ , const Index2D & index){
-            auto &[i , j] = index;
-            auto pl = m_impl->pressure.Sample({i - 1 , j});
-            auto pr = m_impl->pressure.Sample({i + 1 , j});
-            auto pt = m_impl->pressure.Sample({i , j + 1});
-            auto pb = m_impl->pressure.Sample({i , j - 1});
+        m_impl->pressure_next.ForEach([&](float & p , const Index2D & index){
+            // 1. trivally sample at 4 direction
+            // auto &[i , j] = index;
+            // auto pl = m_impl->pressure.Sample({i - 1 , j});
+            // auto pr = m_impl->pressure.Sample({i + 1 , j});
+            // auto pt = m_impl->pressure.Sample({i , j + 1});
+            // auto pb = m_impl->pressure.Sample({i , j - 1});
+            // auto vdiv = m_impl->vel_divergence[index];
+            // p = 0.25 * (pl + pr + pt + pb - vdiv); // dx = 1
+
+            // 2. neighborsum fast hack
+            auto s = m_impl->pressure.NeighborSum(index);
             auto vdiv = m_impl->vel_divergence[index];
-            m_impl->pressure_next[index] = 0.25 * (pl + pr + pt + pb - vdiv); // dx = 1
+            p = 0.25 * (s - vdiv);
         });
+        // #pragma omp parallel for schedule (dynamic , 8)
+        // for(int i = 0; i < m_shape_x ; ++i) { 
+        //     for(int j = 0 , pos = i * m_shape_y; j < m_shape_y ; ++j , ++pos) {
+        //         // std::forward<F>(f)(m_data[pos] , {i,j});
+        //         auto index = Index2D{i,j};
+        //         // auto &[i , j] = index;
+        //         auto pl = m_impl->pressure.Sample({i - 1 , j});
+        //         auto pr = m_impl->pressure.Sample({i + 1 , j});
+        //         auto pt = m_impl->pressure.Sample({i , j + 1});
+        //         auto pb = m_impl->pressure.Sample({i , j - 1});
+        //         auto vdiv = m_impl->vel_divergence[index];
+        //         m_impl->pressure_next[index] = 0.25 * (pl + pr + pt + pb - vdiv); // dx = 1
+        
+        //     }
+        // }
         m_impl->pressure_next.SwapWith(m_impl->pressure);
     }
 }
@@ -197,12 +219,12 @@ void FluidSolver::UpdateVelocity(){
 void FluidSolver::UpdateDye(){
     float inv_dye_denom = 4.0f / std::pow(m_shape_x / 20.f , 2) ;
     m_impl->dye.ForEach([&](Vec3f & d , const Index2D & index){
-        // d *= m_impl->decay;
+        d *= m_impl->decay;
         auto d2 = (Vec2f{index.i , index.j} + 0.5f - m_impl->emit_source).square().sum();
-        auto dc = (d + std::exp(-d2 * inv_dye_denom) * m_impl->dye_color )* m_impl->decay;
-        // if(std::sqrt(dc.square().sum()) > 0.1f) d = dc;
-        if(d2 < 400) d = dc.cwiseMin(m_impl->dye_color);
-        else d = dc.cwiseMin(1.f);
+        if(d2 < 400) d = m_impl->dye_color;
+        // auto dc = (d + std::exp(-d2 * inv_dye_denom) * m_impl->dye_color )* m_impl->decay;
+        // if(d2 < 400) d = dc.cwiseMin(m_impl->dye_color);
+        // else d = dc.cwiseMin(1.f);
     });
 
     //update color buffer

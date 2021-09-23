@@ -55,6 +55,19 @@ public:
         return this->operator[](index);
     }
 
+    //requires V += V{}
+    V NeighborSum(const Index2D & index) requires requires (V & v){ v += std::declval<V>(); }{
+        auto pos = index.i * m_shape_y + index.j ;
+        assert(pos < m_data.size());
+        auto mid = m_data[pos];
+        auto ans = V{};
+        ans += index.i > 0 ? m_data[pos - m_shape_y] : mid;
+        ans += index.i < m_shape_x - 1 ? m_data[pos + m_shape_y]: mid;
+        ans += index.j > 0 ? m_data[pos - 1] : mid;
+        ans += index.j < m_shape_y - 1 ? m_data[pos + 1] : mid;
+        return ans;
+    }
+
     void Fill(const V & val) {
         std::fill(m_data.begin() , m_data.end() , val);
     }
