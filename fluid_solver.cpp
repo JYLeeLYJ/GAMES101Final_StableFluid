@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+
 struct FluidSolver::Impl{
     //grids { pressure , velocity , dye , divergence , RGBA buffer }
     Field<float> pressure , pressure_next;
@@ -10,7 +11,7 @@ struct FluidSolver::Impl{
     Field<Vec3f> dye , dye_next;
     Field<float> vel_divergence;
     Field<RGBA> color_buffer; //RGBA
-    
+
     Vec3f dye_color;  
     float decay;        // dyeing color decay
     float time_stamp ;  // simulation time stamp;
@@ -122,7 +123,7 @@ void FluidSolver::Advection(){
 
     do_advect(m_impl->velocity , m_impl->velocity , m_impl->velocity_next);
     do_advect(m_impl->velocity , m_impl->dye , m_impl->dye_next);
-    
+
     m_impl->velocity.SwapWith(m_impl->velocity_next);
     m_impl->dye.SwapWith(m_impl->dye_next);
 }
@@ -131,7 +132,7 @@ void FluidSolver::Reset(){
     // fill init values into fields
     m_impl->velocity.Fill({0,0});
     m_impl->dye.Fill({0,0,0});
-    // m_impl->color_buffer.Fill({});
+    m_impl->color_buffer.Fill({});
     m_impl->pressure.Fill(0.f);
 }
 
@@ -166,41 +167,16 @@ void FluidSolver::Projection(){
         else if(j == m_shape_y - 1) vt = 0;
         div = (vr - vl + vt - vb) * 0.5 ;   // 1/(2 dx) = 0.5
     });
-
     //jacobian iteration 
     int times = m_impl->jocobian_step;
     while(times--){
         //jacobian step , solve pressure
         m_impl->pressure_next.ForEach([&](float & p , const Index2D & index){
-            // 1. trivally sample at 4 direction
-            // auto &[i , j] = index;
-            // auto pl = m_impl->pressure.Sample({i - 1 , j});
-            // auto pr = m_impl->pressure.Sample({i + 1 , j});
-            // auto pt = m_impl->pressure.Sample({i , j + 1});
-            // auto pb = m_impl->pressure.Sample({i , j - 1});
-            // auto vdiv = m_impl->vel_divergence[index];
-            // p = 0.25 * (pl + pr + pt + pb - vdiv); // dx = 1
-
-            // 2. neighborsum fast hack
+            // neighborsum fast hack
             auto s = m_impl->pressure.NeighborSum(index);
             auto vdiv = m_impl->vel_divergence[index];
             p = 0.25 * (s - vdiv);
         });
-        // #pragma omp parallel for schedule (dynamic , 8)
-        // for(int i = 0; i < m_shape_x ; ++i) { 
-        //     for(int j = 0 , pos = i * m_shape_y; j < m_shape_y ; ++j , ++pos) {
-        //         // std::forward<F>(f)(m_data[pos] , {i,j});
-        //         auto index = Index2D{i,j};
-        //         // auto &[i , j] = index;
-        //         auto pl = m_impl->pressure.Sample({i - 1 , j});
-        //         auto pr = m_impl->pressure.Sample({i + 1 , j});
-        //         auto pt = m_impl->pressure.Sample({i , j + 1});
-        //         auto pb = m_impl->pressure.Sample({i , j - 1});
-        //         auto vdiv = m_impl->vel_divergence[index];
-        //         m_impl->pressure_next[index] = 0.25 * (pl + pr + pt + pb - vdiv); // dx = 1
-        
-        //     }
-        // }
         m_impl->pressure_next.SwapWith(m_impl->pressure);
     }
 }

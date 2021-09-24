@@ -22,9 +22,11 @@ requires (std::is_standard_layout_v<V>)
 class Field{
 public:
     explicit Field(std::size_t shape_x , std::size_t shape_y)
-    :m_shape_x(shape_x) , m_shape_y(shape_y) , m_data(shape_x * shape_y){}
+    :m_shape_x(shape_x) , m_shape_y(shape_y) 
+    ,m_maxi(shape_x - 1) , m_maxj(shape_y - 1) 
+    ,m_data(shape_x * shape_y){}
 
-    std::size_t XSize() const noexcept { return m_shape_x ;}
+    std::size_t XSize() const noexcept {return m_shape_x;}
     std::size_t YSize() const noexcept {return m_shape_y;}
 
     template<std::invocable<V & , Index2D> F>
@@ -32,8 +34,9 @@ public:
         // coord (i, j) should be signed integer
         #pragma omp parallel for schedule (dynamic , 8)
         for(int i = 0; i < m_shape_x ; ++i) { 
-            for(int j = 0 , pos = i * m_shape_y; j < m_shape_y ; ++j , ++pos) {
-                std::forward<F>(f)(m_data[pos] , {i,j});
+            auto index = Index2D{i, 0};
+            for(int pos = i * m_shape_y; index.j < m_shape_y ; ++index.j , ++pos) {
+                std::forward<F>(f)(m_data[pos] , index);
             }
         }
     }
@@ -50,21 +53,21 @@ public:
 
     // clamp sample , no extrapolate
     V Sample(Index2D index) noexcept {
-        index.i = std::clamp<int>(index.i , 0 , m_shape_x - 1 );
-        index.j = std::clamp<int>(index.j , 0 , m_shape_y - 1 );
+        index.i = std::clamp<int>(index.i , 0 , m_maxi );
+        index.j = std::clamp<int>(index.j , 0 , m_maxj );
         return this->operator[](index);
     }
 
     //requires V += V{}
-    V NeighborSum(const Index2D & index) requires requires (V & v){ v += std::declval<V>(); }{
+    V NeighborSum(const Index2D & index) noexcept requires requires (V & v){ v += std::declval<V>(); }{
         auto pos = index.i * m_shape_y + index.j ;
         assert(pos < m_data.size());
         auto mid = m_data[pos];
         auto ans = V{};
         ans += index.i > 0 ? m_data[pos - m_shape_y] : mid;
-        ans += index.i < m_shape_x - 1 ? m_data[pos + m_shape_y]: mid;
+        ans += index.i < m_maxi ? m_data[pos + m_shape_y]: mid;
         ans += index.j > 0 ? m_data[pos - 1] : mid;
-        ans += index.j < m_shape_y - 1 ? m_data[pos + 1] : mid;
+        ans += index.j < m_maxj ? m_data[pos + 1] : mid;
         return ans;
     }
 
@@ -72,15 +75,16 @@ public:
         std::fill(m_data.begin() , m_data.end() , val);
     }
 
-    void SwapWith(Field & f){
+    void SwapWith(Field & f) noexcept{
         std::swap(m_shape_x , f.m_shape_x);
         std::swap(m_shape_y , f.m_shape_y);
         std::swap(m_data, f.m_data);
     }
-
 private:
     std::size_t m_shape_x;
     std::size_t m_shape_y;
+    int m_maxi;
+    int m_maxj;
     std::vector<V> m_data{};
 };
 

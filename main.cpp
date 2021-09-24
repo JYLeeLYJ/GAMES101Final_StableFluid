@@ -5,6 +5,7 @@
 #include <Eigen/Eigen>
 #include <chrono>
 #include <format>
+#include <cassert>
 
 // TODO : 
 // 1. frame buffer should directly write into d3d backgroud
@@ -23,6 +24,7 @@ int main(){
     };
     auto gui = GUI{resolution,resolution};
     auto solver = FluidSolver{resolution,resolution, config};
+    
     // GUI states
     bool paused = false;
     bool reset = false;
@@ -30,6 +32,7 @@ int main(){
     bool setdecay = false;
     float color[3] = {1.0f , 0.f , 0.f};
     bool setcolor = false;
+
     // main loop 
     while(true){
         if(gui.ProcessMessage(paused)) break;
